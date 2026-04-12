@@ -110,7 +110,7 @@ Containers: 3
 
 ---
 
-## How It Works (briefly)
+## How It Works
 
 1. A **gateway container** joins every Docker bridge network, gaining real Ethernet interfaces
 2. A **WinTUN virtual adapter** on Windows captures packets destined for Docker subnets
