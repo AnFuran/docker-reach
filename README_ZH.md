@@ -37,11 +37,17 @@ docker-reach 在 Windows 和一个网关容器之间建立轻量 IP 隧道。网
 
 ### 编译
 
+不需要安装 Go -- 全部通过 Docker 编译。
+
 ```powershell
-git clone https://github.com/docker-reach/docker-reach.git
+git clone https://github.com/AnFuran/docker-reach.git
 cd docker-reach
+
+# 构建网关镜像
 docker build -t docker-reach-gateway:latest .
-go build -o docker-reach.exe ./cmd/docker-reach
+
+# 编译 Windows 客户端（不需要本地安装 Go）
+docker run --rm -v "${PWD}:/src" -w /src golang:1.22-alpine sh -c "CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o docker-reach.exe ./cmd/docker-reach"
 ```
 
 ### 启动

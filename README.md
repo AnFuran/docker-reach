@@ -37,11 +37,17 @@ Your normal internet traffic is completely unaffected -- only packets destined f
 
 ### Build
 
+No Go installation required -- everything builds inside Docker.
+
 ```powershell
-git clone https://github.com/docker-reach/docker-reach.git
+git clone https://github.com/AnFuran/docker-reach.git
 cd docker-reach
+
+# Build the gateway image
 docker build -t docker-reach-gateway:latest .
-go build -o docker-reach.exe ./cmd/docker-reach
+
+# Build the Windows CLI (no local Go needed)
+docker run --rm -v "${PWD}:/src" -w /src golang:1.22-alpine sh -c "CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o docker-reach.exe ./cmd/docker-reach"
 ```
 
 ### Run
