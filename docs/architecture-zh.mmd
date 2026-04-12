@@ -1,0 +1,61 @@
+%%{init: {
+  "theme": "base",
+  "themeVariables": {
+    "primaryColor": "#E3F2FD",
+    "primaryTextColor": "#1565C0",
+    "primaryBorderColor": "#1565C0",
+    "secondaryColor": "#FFF3E0",
+    "secondaryTextColor": "#E65100",
+    "secondaryBorderColor": "#E65100",
+    "tertiaryColor": "#E8F5E9",
+    "tertiaryTextColor": "#2E7D32",
+    "tertiaryBorderColor": "#2E7D32",
+    "lineColor": "#455A64",
+    "textColor": "#212121",
+    "fontSize": "14px"
+  }
+}}%%
+
+graph TB
+    subgraph WIN["<b>Windows 宿主机</b>"]
+        direction TB
+        APP["<b>用户应用</b><br/><i>curl, 浏览器, ping ...</i>"]
+        WINTUN["<b>WinTUN 虚拟网卡</b><br/>DockerReach — 10.0.85.2/24<br/><i>内核级虚拟网络适配器</i>"]
+        DAEMON["<b>docker-reach 守护进程</b><br/><i>以管理员权限运行</i><br/>━━━━━━━━━━━━━━━━━━━<br/>WinTUN 会话管理<br/>路由表管理<br/>hosts 文件更新<br/>Docker 事件监听"]
+
+        APP -->|"路由 172.17.0.0/16<br/>→ 10.0.85.1"| WINTUN
+        WINTUN <-->|"原始 IP 数据包<br/><i>内核 ↔ 用户态</i>"| DAEMON
+    end
+
+    DAEMON <-->|"<b>TCP 隧道</b><br/>localhost:9999<br/>[2字节长度][IP数据包]..."| GW
+
+    subgraph VM["<b>Docker Desktop 虚拟机</b> <i>(WSL2 / Hyper-V)</i>"]
+        direction TB
+        GW["<b>docker-reach-gateway</b><br/><i>特权容器</i><br/>━━━━━━━━━━━━━━━━━━━<br/>tun0: 10.0.85.1/24<br/>eth0: 172.17.0.x <i>(默认桥接)</i><br/>eth1: 172.18.0.x <i>(dev-net)</i><br/>eth2: 10.89.0.x <i>(app-net)</i><br/>━━━━━━━━━━━━━━━━━━━<br/>ip_forward = 1<br/>iptables MASQUERADE"]
+
+        subgraph NETS["<b>Docker 桥接网络</b>"]
+            direction LR
+            subgraph BR1["bridge <i>(默认)</i><br/>172.17.0.0/16"]
+                C1["容器 A<br/>172.17.0.3"]
+                C2["容器 B<br/>172.17.0.4"]
+            end
+            subgraph BR2["dev-net<br/>172.18.0.0/16"]
+                C3["api 服务<br/>172.18.0.3"]
+                C4["worker<br/>172.18.0.4"]
+            end
+            subgraph BR3["app-net<br/>10.89.0.0/16"]
+                C5["前端服务<br/>10.89.0.3"]
+            end
+        end
+
+        GW -->|"内核转发<br/>+ NAT 地址伪装"| NETS
+    end
+
+    classDef winStyle fill:#E3F2FD,stroke:#1565C0,stroke-width:2px,color:#0D47A1
+    classDef vmStyle fill:#FFF3E0,stroke:#E65100,stroke-width:2px,color:#BF360C
+    classDef gwStyle fill:#FFECB3,stroke:#F57F17,stroke-width:2px,color:#E65100
+    classDef containerStyle fill:#E8F5E9,stroke:#2E7D32,stroke-width:1px,color:#1B5E20
+
+    class APP,WINTUN,DAEMON winStyle
+    class GW gwStyle
+    class C1,C2,C3,C4,C5 containerStyle

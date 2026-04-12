@@ -1,0 +1,40 @@
+%%{init: {
+  "theme": "base",
+  "themeVariables": {
+    "fontSize": "13px"
+  }
+}}%%
+
+graph LR
+    subgraph PROBLEM["<b>The Problem: Docker Desktop Network Isolation</b>"]
+        direction TB
+        W["Windows Host<br/>192.168.x.x"]
+        VM["WSL2 VM<br/><i>hidden, no direct route</i>"]
+        D["Docker Bridge<br/>172.17.0.0/16"]
+
+        W -.-x|"❌ No route"| D
+        W ---|"NAT"| VM
+        VM ---|"internal"| D
+    end
+
+    subgraph SOLUTION["<b>docker-reach Solution</b>"]
+        direction TB
+        W2["Windows Host"]
+        TUN["WinTUN<br/>10.0.85.2"]
+        GW2["Gateway Container<br/><i>joined to all bridges</i>"]
+        D2["Docker Bridge<br/>172.17.0.0/16"]
+
+        W2 -->|"route via<br/>WinTUN"| TUN
+        TUN <-->|"IP tunnel<br/>over TCP"| GW2
+        GW2 -->|"L2 forwarding<br/>+ masquerade"| D2
+    end
+
+    classDef blocked fill:#FFCDD2,stroke:#C62828,stroke-width:2px,color:#B71C1C
+    classDef ok fill:#C8E6C9,stroke:#2E7D32,stroke-width:2px,color:#1B5E20
+    classDef neutral fill:#F5F5F5,stroke:#616161,stroke-width:1px
+
+    class W,VM,D neutral
+    class W2,TUN,GW2,D2 ok
+
+    style PROBLEM fill:#FFF3F3,stroke:#E53935,stroke-width:2px
+    style SOLUTION fill:#F1F8E9,stroke:#43A047,stroke-width:2px

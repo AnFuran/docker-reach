@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>docker-reach</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d0d1a;
+    --surface: #12122a;
+    --card: #16213e;
+    --card-hover: #1a2a52;
+    --border: #1e2d5a;
+    --accent: #3b82f6;
+    --accent-dim: #1d4ed8;
+    --green: #22c55e;
+    --green-dim: #15803d;
+    --red: #ef4444;
+    --yellow: #eab308;
+    --text: #e2e8f0;
+    --text-muted: #94a3b8;
+    --text-dim: #64748b;
+    --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 14px;
+    min-height: 100vh;
+    line-height: 1.5;
+  }
+
+  /* ─── Header ─── */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 700;
+    font-size: 18px;
+    letter-spacing: -0.3px;
+    color: #fff;
+  }
+
+  .logo svg { flex-shrink: 0; }
+
+  .header-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .tunnel-badge {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 13px;
+    font-weight: 500;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 4px 12px;
+  }
+
+  .uptime {
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+
+  /* ─── Status dot + pulse ─── */
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .dot.green {
+    background: var(--green);
+    box-shadow: 0 0 0 0 var(--green);
+    animation: pulse-green 2s infinite;
+  }
+
+  .dot.red {
+    background: var(--red);
+  }
+
+  .dot.yellow {
+    background: var(--yellow);
+    box-shadow: 0 0 0 0 var(--yellow);
+    animation: pulse-yellow 2s infinite;
+  }
+
+  @keyframes pulse-green {
+    0%   { box-shadow: 0 0 0 0 rgba(34,197,94,.5); }
+    70%  { box-shadow: 0 0 0 6px rgba(34,197,94,0); }
+    100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
+  }
+
+  @keyframes pulse-yellow {
+    0%   { box-shadow: 0 0 0 0 rgba(234,179,8,.5); }
+    70%  { box-shadow: 0 0 0 6px rgba(234,179,8,0); }
+    100% { box-shadow: 0 0 0 0 rgba(234,179,8,0); }
+  }
+
+  /* ─── Main layout ─── */
+  main {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 24px;
+  }
+
+  /* ─── Stats row ─── */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .stat-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    transition: border-color .15s;
+  }
+
+  .stat-card:hover { border-color: var(--accent); }
+
+  .stat-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .6px;
+    color: var(--text-dim);
+  }
+
+  .stat-value {
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1;
+    color: #fff;
+  }
+
+  .stat-sub {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  /* ─── Sections ─── */
+  .section {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 20px;
+    overflow: hidden;
+  }
+
+  .section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(255,255,255,.02);
+  }
+
+  .section-title {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: .3px;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .badge {
+    background: var(--accent-dim);
+    color: #93c5fd;
+    border-radius: 10px;
+    padding: 1px 8px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  /* ─── Search ─── */
+  .search-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  .search-wrap svg {
+    position: absolute;
+    left: 10px;
+    color: var(--text-dim);
+    pointer-events: none;
+  }
+
+  .search-input {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 13px;
+    padding: 5px 12px 5px 32px;
+    width: 220px;
+    outline: none;
+    transition: border-color .15s;
+  }
+
+  .search-input:focus { border-color: var(--accent); }
+  .search-input::placeholder { color: var(--text-dim); }
+
+  /* ─── Table ─── */
+  .table-wrap { overflow-x: auto; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  thead th {
+    padding: 10px 16px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    color: var(--text-dim);
+    background: rgba(255,255,255,.02);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+
+  tbody tr {
+    border-bottom: 1px solid rgba(30,45,90,.5);
+    transition: background .12s;
+  }
+
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: rgba(59,130,246,.05); }
+
+  td {
+    padding: 10px 16px;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+
+  .td-name {
+    font-weight: 500;
+    color: #fff;
+  }
+
+  .copy-cell {
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: fit-content;
+    border-radius: 4px;
+    padding: 2px 6px;
+    margin: -2px -6px;
+    transition: background .12s;
+  }
+
+  .copy-cell:hover { background: rgba(59,130,246,.15); }
+
+  .copy-icon {
+    opacity: 0;
+    transition: opacity .12s;
+    flex-shrink: 0;
+  }
+
+  .copy-cell:hover .copy-icon { opacity: 1; }
+
+  .ip-text { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 12px; color: #7dd3fc; }
+  .net-text { color: var(--text-muted); }
+  .img-text { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 12px; color: var(--text-muted); max-width: 180px; overflow: hidden; text-overflow: ellipsis; display: inline-block; vertical-align: middle; }
+  .ports-text { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 11px; color: #a5b4fc; }
+  .time-text { color: var(--text-dim); font-size: 12px; }
+
+  /* ─── Action button ─── */
+  .btn-action {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 3px 9px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: border-color .12s, color .12s, background .12s;
+    white-space: nowrap;
+  }
+
+  .btn-action:hover {
+    border-color: var(--accent);
+    color: #93c5fd;
+    background: rgba(59,130,246,.1);
+  }
+
+  /* ─── Empty state ─── */
+  .empty {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-dim);
+    font-size: 13px;
+  }
+
+  /* ─── Subnets ─── */
+  .subnets-wrap {
+    padding: 16px 20px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .subnet-pill {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 5px 14px;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: border-color .15s;
+  }
+
+  .subnet-pill:hover { border-color: var(--accent); }
+
+  .subnet-name { font-weight: 600; color: #fff; }
+  .subnet-cidr { font-family: 'SFMono-Regular', Consolas, monospace; color: #7dd3fc; font-size: 11px; }
+
+  /* ─── Toast ─── */
+  #toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: #1e293b;
+    border: 1px solid var(--accent);
+    color: #93c5fd;
+    border-radius: 8px;
+    padding: 10px 18px;
+    font-size: 13px;
+    font-weight: 500;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity .2s, transform .2s;
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  #toast.show { opacity: 1; transform: translateY(0); }
+
+  /* ─── Error banner ─── */
+  .error-banner {
+    background: rgba(239,68,68,.1);
+    border: 1px solid rgba(239,68,68,.3);
+    border-radius: 8px;
+    color: #fca5a5;
+    padding: 10px 16px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    display: none;
+  }
+
+  .error-banner.visible { display: block; }
+
+  /* ─── Scrollbar styling ─── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+      <rect width="22" height="22" rx="5" fill="#1d4ed8"/>
+      <path d="M4 11a7 7 0 1 0 14 0A7 7 0 0 0 4 11z" stroke="#93c5fd" stroke-width="1.5" fill="none"/>
+      <path d="M11 4v14M4 11h14" stroke="#93c5fd" stroke-width="1.5" stroke-linecap="round"/>
+      <circle cx="11" cy="11" r="2" fill="#3b82f6"/>
+    </svg>
+    docker-reach
+  </div>
+  <div class="header-right">
+    <div class="tunnel-badge" id="tunnelBadge">
+      <div class="dot red" id="tunnelDot"></div>
+      <span id="tunnelLabel">disconnected</span>
+    </div>
+    <div class="uptime" id="uptimeLabel">uptime: —</div>
+  </div>
+</header>
+
+<main>
+  <div class="error-banner" id="errorBanner">Unable to reach API — retrying…</div>
+
+  <!-- Stats row -->
+  <div class="stats">
+    <div class="stat-card">
+      <div class="stat-label">Containers</div>
+      <div class="stat-value" id="statContainers">—</div>
+      <div class="stat-sub" id="statContainerSub">running</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Subnets</div>
+      <div class="stat-value" id="statSubnets">—</div>
+      <div class="stat-sub">bridge networks</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Tunnel</div>
+      <div class="stat-value" id="statTunnel" style="font-size:18px;padding-top:4px">—</div>
+      <div class="stat-sub" id="statTunnelSub">127.0.0.1:9999</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Gateway</div>
+      <div class="stat-value" id="statGateway" style="font-size:18px;padding-top:4px">—</div>
+      <div class="stat-sub">docker-reach-gateway</div>
+    </div>
+  </div>
+
+  <!-- Containers table -->
+  <div class="section">
+    <div class="section-head">
+      <div class="section-title">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+        </svg>
+        Containers
+        <span class="badge" id="containerBadge">0</span>
+      </div>
+      <div class="search-wrap">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input class="search-input" id="searchInput" type="text" placeholder="Filter by name, IP, network…">
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:36px"></th>
+            <th>Name</th>
+            <th>IP</th>
+            <th>Network</th>
+            <th>Image</th>
+            <th>Ports</th>
+            <th>Created</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="containerTable">
+          <tr><td colspan="8" class="empty">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Subnets -->
+  <div class="section">
+    <div class="section-head">
+      <div class="section-title">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
+          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+        </svg>
+        Subnets
+        <span class="badge" id="subnetBadge">0</span>
+      </div>
+    </div>
+    <div class="subnets-wrap" id="subnetsWrap">
+      <div class="empty">Loading…</div>
+    </div>
+  </div>
+</main>
+
+<div id="toast"></div>
+
+<script>
+'use strict';
+
+// ─── State ───────────────────────────────────────────────────────────────────
+let allContainers = [];
+let searchQuery = '';
+let toastTimer = null;
+
+// ─── Toast ───────────────────────────────────────────────────────────────────
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 1800);
+}
+
+// ─── Clipboard ───────────────────────────────────────────────────────────────
+function copyText(text, label) {
+  navigator.clipboard.writeText(text).then(() => showToast('Copied: ' + label));
+}
+
+// ─── Relative time ───────────────────────────────────────────────────────────
+function relTime(isoStr) {
+  if (!isoStr) return '—';
+  const d = new Date(isoStr);
+  if (isNaN(d)) return '—';
+  const sec = Math.floor((Date.now() - d) / 1000);
+  if (sec < 60) return sec + 's ago';
+  const min = Math.floor(sec / 60);
+  if (min < 60) return min + 'm ago';
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return hr + 'h ago';
+  const day = Math.floor(hr / 24);
+  return day + 'd ago';
+}
+
+// ─── Uptime formatting ───────────────────────────────────────────────────────
+function fmtUptime(sec) {
+  if (!sec && sec !== 0) return '—';
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  if (h > 0) return h + 'h ' + m + 'm';
+  if (m > 0) return m + 'm ' + s + 's';
+  return s + 's';
+}
+
+// ─── Render containers ───────────────────────────────────────────────────────
+function renderContainers() {
+  const q = searchQuery.toLowerCase().trim();
+  const filtered = q
+    ? allContainers.filter(c =>
+        c.name.toLowerCase().includes(q) ||
+        (c.ip || '').includes(q) ||
+        (c.network || '').toLowerCase().includes(q) ||
+        (c.image || '').toLowerCase().includes(q)
+      )
+    : allContainers;
+
+  const tbody = document.getElementById('containerTable');
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" class="empty">' +
+      (q ? 'No containers match "' + escHtml(q) + '"' : 'No running containers') +
+      '</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(c => {
+    const running = c.status === 'running';
+    const dotClass = running ? 'green' : 'red';
+
+    // Ports: pick first mapped host port if available
+    let portsHtml = '<span class="ports-text">—</span>';
+    let firstPort = '';
+    if (c.ports && c.ports.length > 0) {
+      const portStrs = c.ports.slice(0, 3).map(p => {
+        if (p.public_port) {
+          if (!firstPort) firstPort = String(p.public_port);
+          return p.public_port + '→' + p.private_port;
+        }
+        return p.private_port;
+      });
+      portsHtml = '<span class="ports-text">' + portStrs.map(escHtml).join(' ') + (c.ports.length > 3 ? ' …' : '') + '</span>';
+    }
+
+    // curl command
+    const curlPort = firstPort || '';
+    const curlCmd = curlPort
+      ? 'curl http://' + c.name + '.docker:' + curlPort
+      : 'curl http://' + c.name + '.docker';
+
+    // truncated image
+    let imgShort = c.image || '—';
+    if (imgShort.length > 35) imgShort = imgShort.slice(0, 33) + '…';
+
+    return '<tr>' +
+      '<td><div class="dot ' + dotClass + '"></div></td>' +
+      '<td class="td-name">' +
+        '<div class="copy-cell" onclick="copyText(\'' + escAttr(c.name + '.docker') + '\', \'' + escAttr(c.name + '.docker') + '\')">' +
+          escHtml(c.name) +
+          '<svg class="copy-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>' +
+        '</div>' +
+      '</td>' +
+      '<td>' +
+        '<div class="copy-cell" onclick="copyText(\'' + escAttr(c.ip) + '\', \'' + escAttr(c.ip) + '\')">' +
+          '<span class="ip-text">' + escHtml(c.ip || '—') + '</span>' +
+          '<svg class="copy-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>' +
+        '</div>' +
+      '</td>' +
+      '<td><span class="net-text">' + escHtml(c.network || '—') + '</span></td>' +
+      '<td><span class="img-text" title="' + escAttr(c.image || '') + '">' + escHtml(imgShort) + '</span></td>' +
+      '<td>' + portsHtml + '</td>' +
+      '<td><span class="time-text">' + relTime(c.created) + '</span></td>' +
+      '<td>' +
+        '<button class="btn-action" onclick="copyText(\'' + escAttr(curlCmd) + '\', \'curl command\')">' +
+          '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>' +
+          'curl' +
+        '</button>' +
+      '</td>' +
+    '</tr>';
+  }).join('');
+}
+
+// ─── Render subnets ───────────────────────────────────────────────────────────
+function renderSubnets(subnets) {
+  const wrap = document.getElementById('subnetsWrap');
+  if (!subnets || subnets.length === 0) {
+    wrap.innerHTML = '<div class="empty">No bridge networks</div>';
+    return;
+  }
+  wrap.innerHTML = subnets.map(s =>
+    '<div class="subnet-pill">' +
+      '<span class="dot green" style="animation:none"></span>' +
+      '<span class="subnet-name">' + escHtml(s.name) + '</span>' +
+      '<span class="subnet-cidr">' + escHtml(s.cidr) + '</span>' +
+    '</div>'
+  ).join('');
+}
+
+// ─── Update UI from API response ─────────────────────────────────────────────
+function updateUI(data) {
+  // Tunnel badge
+  const connected = data.tunnel_connected;
+  const dot = document.getElementById('tunnelDot');
+  const label = document.getElementById('tunnelLabel');
+  dot.className = 'dot ' + (connected ? 'green' : 'red');
+  label.textContent = connected ? 'connected' : 'disconnected';
+
+  // Uptime
+  document.getElementById('uptimeLabel').textContent = 'uptime: ' + fmtUptime(data.uptime_seconds);
+
+  // Stats
+  const containers = data.containers || [];
+  const subnets = data.subnets || [];
+
+  document.getElementById('statContainers').textContent = containers.length;
+  document.getElementById('statSubnets').textContent = subnets.length;
+
+  const statTunnel = document.getElementById('statTunnel');
+  statTunnel.textContent = connected ? 'Up' : 'Down';
+  statTunnel.style.color = connected ? 'var(--green)' : 'var(--red)';
+
+  const gw = data.gateway;
+  const statGw = document.getElementById('statGateway');
+  if (gw && gw.status === 'running') {
+    statGw.textContent = 'Up';
+    statGw.style.color = 'var(--green)';
+  } else if (gw) {
+    statGw.textContent = gw.status || 'N/A';
+    statGw.style.color = 'var(--yellow)';
+  } else {
+    statGw.textContent = 'N/A';
+    statGw.style.color = 'var(--text-dim)';
+  }
+
+  // Badge counts
+  document.getElementById('containerBadge').textContent = containers.length;
+  document.getElementById('subnetBadge').textContent = subnets.length;
+
+  // Store and render containers
+  allContainers = containers;
+  renderContainers();
+  renderSubnets(subnets);
+}
+
+// ─── Fetch loop ───────────────────────────────────────────────────────────────
+async function fetchStatus() {
+  try {
+    const res = await fetch('/api/status');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    document.getElementById('errorBanner').classList.remove('visible');
+    updateUI(data);
+  } catch (e) {
+    document.getElementById('errorBanner').classList.add('visible');
+  }
+}
+
+// ─── Search wiring ────────────────────────────────────────────────────────────
+document.getElementById('searchInput').addEventListener('input', function () {
+  searchQuery = this.value;
+  renderContainers();
+});
+
+// ─── HTML escaping ────────────────────────────────────────────────────────────
+function escHtml(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function escAttr(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'");
+}
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+fetchStatus();
+setInterval(fetchStatus, 2000);
+</script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+*.exe
+*.dll
+*.log
+dist/
+
+# Binary outputs
+/docker-reach
+/gateway
+/dr
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo

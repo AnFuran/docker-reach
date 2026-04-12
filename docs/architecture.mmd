@@ -1,0 +1,62 @@
+%%{init: {
+  "theme": "base",
+  "themeVariables": {
+    "primaryColor": "#E3F2FD",
+    "primaryTextColor": "#1565C0",
+    "primaryBorderColor": "#1565C0",
+    "secondaryColor": "#FFF3E0",
+    "secondaryTextColor": "#E65100",
+    "secondaryBorderColor": "#E65100",
+    "tertiaryColor": "#E8F5E9",
+    "tertiaryTextColor": "#2E7D32",
+    "tertiaryBorderColor": "#2E7D32",
+    "lineColor": "#455A64",
+    "textColor": "#212121",
+    "fontSize": "14px"
+  }
+}}%%
+
+graph TB
+    subgraph WIN["<b>Windows Host</b>"]
+        direction TB
+        APP["<b>Application</b><br/><i>curl, browser, ping ...</i>"]
+        WINTUN["<b>WinTUN Virtual Adapter</b><br/>DockerReach — 10.0.85.2/24<br/><i>Kernel-level virtual NIC</i>"]
+        DAEMON["<b>docker-reach daemon</b><br/><i>Administrator process</i><br/>━━━━━━━━━━━━━━━━━━━<br/>WinTUN session manager<br/>Route table manager<br/>Hosts file updater<br/>Docker event watcher"]
+
+        APP -->|"route 172.17.0.0/16<br/>→ 10.0.85.1"| WINTUN
+        WINTUN <-->|"raw IP packets<br/><i>kernel ↔ userspace</i>"| DAEMON
+    end
+
+    DAEMON <-->|"<b>TCP tunnel</b><br/>localhost:9999<br/>[2B len][IP packet]..."| GW
+
+    subgraph VM["<b>Docker Desktop VM</b> <i>(WSL2 / Hyper-V)</i>"]
+        direction TB
+        GW["<b>docker-reach-gateway</b><br/><i>privileged container</i><br/>━━━━━━━━━━━━━━━━━━━<br/>tun0: 10.0.85.1/24<br/>eth0: 172.17.0.x <i>(bridge)</i><br/>eth1: 172.18.0.x <i>(dev-net)</i><br/>eth2: 10.89.0.x <i>(app-net)</i><br/>━━━━━━━━━━━━━━━━━━━<br/>ip_forward = 1<br/>iptables MASQUERADE"]
+
+        subgraph NETS["<b>Docker Bridge Networks</b>"]
+            direction LR
+            subgraph BR1["bridge <i>(default)</i><br/>172.17.0.0/16"]
+                C1["container-a<br/>172.17.0.3"]
+                C2["container-b<br/>172.17.0.4"]
+            end
+            subgraph BR2["dev-net<br/>172.18.0.0/16"]
+                C3["api-service<br/>172.18.0.3"]
+                C4["worker<br/>172.18.0.4"]
+            end
+            subgraph BR3["app-net<br/>10.89.0.0/16"]
+                C5["frontend<br/>10.89.0.3"]
+            end
+        end
+
+        GW -->|"kernel forwarding<br/>+ NAT masquerade"| NETS
+    end
+
+    classDef winStyle fill:#E3F2FD,stroke:#1565C0,stroke-width:2px,color:#0D47A1
+    classDef vmStyle fill:#FFF3E0,stroke:#E65100,stroke-width:2px,color:#BF360C
+    classDef gwStyle fill:#FFECB3,stroke:#F57F17,stroke-width:2px,color:#E65100
+    classDef containerStyle fill:#E8F5E9,stroke:#2E7D32,stroke-width:1px,color:#1B5E20
+    classDef netStyle fill:#F3E5F5,stroke:#7B1FA2,stroke-width:1px
+
+    class APP,WINTUN,DAEMON winStyle
+    class GW gwStyle
+    class C1,C2,C3,C4,C5 containerStyle

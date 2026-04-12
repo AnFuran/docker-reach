@@ -1,0 +1,54 @@
+%%{init: {
+  "theme": "base",
+  "sequence": {
+    "mirrorActors": false,
+    "actorMargin": 30,
+    "messageMargin": 40,
+    "noteMargin": 15,
+    "width": 180
+  },
+  "themeVariables": {
+    "actorBkg": "#E3F2FD",
+    "actorBorder": "#1565C0",
+    "actorTextColor": "#0D47A1",
+    "signalColor": "#455A64",
+    "signalTextColor": "#212121",
+    "noteBkgColor": "#FFF9C4",
+    "noteBorderColor": "#F9A825",
+    "noteTextColor": "#212121",
+    "activationBkgColor": "#BBDEFB",
+    "activationBorderColor": "#1565C0",
+    "fontSize": "13px"
+  }
+}}%%
+
+sequenceDiagram
+    participant App as Application<br/>(Windows)
+    participant TUN as WinTUN<br/>Adapter
+    participant Daemon as docker-reach<br/>Daemon
+    participant Tunnel as TCP Tunnel<br/>localhost:9999
+    participant GW as Gateway<br/>Container
+    participant Bridge as Docker<br/>Bridge
+    participant C as Target<br/>Container
+
+    Note over App,C: Outbound: Windows → Container
+
+    App->>TUN: IP packet to 172.17.0.3
+    Note right of App: Windows route table:<br/>172.17.0.0/16 → 10.0.85.1<br/>via DockerReach adapter
+
+    TUN->>Daemon: Raw IP packet<br/>(kernel → userspace)
+    Daemon->>Tunnel: [2B length][IP packet]
+    Tunnel->>GW: TCP stream<br/>(Docker port binding)
+    Note right of GW: Packet written to tun0<br/>Kernel IP forwarding<br/>src NAT (MASQUERADE)
+    GW->>Bridge: Forwarded packet<br/>(via eth0/eth1/ethN)
+    Bridge->>C: Delivered to container
+
+    Note over App,C: Return: Container → Windows
+
+    C->>Bridge: Response packet
+    Bridge->>GW: Arrives at gateway eth0
+    Note right of GW: conntrack de-NATs<br/>Routes via tun0
+    GW->>Tunnel: [2B length][IP packet]
+    Tunnel->>Daemon: TCP stream
+    Daemon->>TUN: Raw IP packet<br/>(userspace → kernel)
+    TUN->>App: Delivered to application

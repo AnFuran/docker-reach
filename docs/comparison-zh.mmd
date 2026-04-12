@@ -1,0 +1,40 @@
+%%{init: {
+  "theme": "base",
+  "themeVariables": {
+    "fontSize": "13px"
+  }
+}}%%
+
+graph LR
+    subgraph PROBLEM["<b>问题：Docker Desktop 网络隔离</b>"]
+        direction TB
+        W["Windows 宿主机<br/>192.168.x.x"]
+        VM["WSL2 虚拟机<br/><i>隐藏的，无直接路由</i>"]
+        D["Docker 桥接网络<br/>172.17.0.0/16"]
+
+        W -.-x|"无法路由"| D
+        W ---|"NAT"| VM
+        VM ---|"内部网络"| D
+    end
+
+    subgraph SOLUTION["<b>docker-reach 解决方案</b>"]
+        direction TB
+        W2["Windows 宿主机"]
+        TUN["WinTUN 虚拟网卡<br/>10.0.85.2"]
+        GW2["网关容器<br/><i>加入所有桥接网络</i>"]
+        D2["Docker 桥接网络<br/>172.17.0.0/16"]
+
+        W2 -->|"经由 WinTUN<br/>路由"| TUN
+        TUN <-->|"IP 隧道<br/>(TCP 封装)"| GW2
+        GW2 -->|"L2 转发<br/>+ 地址伪装"| D2
+    end
+
+    classDef blocked fill:#FFCDD2,stroke:#C62828,stroke-width:2px,color:#B71C1C
+    classDef ok fill:#C8E6C9,stroke:#2E7D32,stroke-width:2px,color:#1B5E20
+    classDef neutral fill:#F5F5F5,stroke:#616161,stroke-width:1px
+
+    class W,VM,D neutral
+    class W2,TUN,GW2,D2 ok
+
+    style PROBLEM fill:#FFF3F3,stroke:#E53935,stroke-width:2px
+    style SOLUTION fill:#F1F8E9,stroke:#43A047,stroke-width:2px

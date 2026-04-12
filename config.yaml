@@ -1,0 +1,37 @@
+# docker-reach configuration file
+#
+# Copy this file to config.yaml next to the docker-reach.exe and uncomment
+# the fields you want to change. Every field is optional — omitted fields
+# keep their built-in defaults.
+
+# TCP port that the gateway container listens on for the IP tunnel.
+# The Windows host connects to 127.0.0.1:<tunnel_port>.
+# tunnel_port: 9999
+
+# HTTP port for the web dashboard served inside the gateway container.
+# dashboard_port: 9998
+
+# Subnet assigned to the virtual TUN adapter.
+#   .1  → gateway IP (Linux side)
+#   .2  → local IP  (Windows / WinTUN side)
+# tun_subnet: "10.0.85.0/24"
+
+# Docker image used for the gateway container.
+# gateway_image: "docker-reach-gateway:latest"
+
+# Name given to the gateway container (used by docker rm -f on cleanup).
+# gateway_name: "docker-reach-gateway"
+
+# Name of the WinTUN virtual network adapter created on Windows.
+# adapter_name: "DockerReach"
+
+# Path to the persistent log file written next to the exe.
+# log_file: "docker-reach.log"
+
+# Subnets whose base IP falls inside this block are skipped when adding routes,
+# to avoid hijacking WSL2 traffic. Set to an empty string to disable protection.
+# wsl_protect_subnet: "172.16.0.0/12"
+
+# Docker's default bridge subnet is exempted from WSL protection so that
+# containers on the standard bridge remain reachable.
+# docker_default_bridge: "172.17.0.0/16"

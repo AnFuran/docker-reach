@@ -1,0 +1,54 @@
+%%{init: {
+  "theme": "base",
+  "sequence": {
+    "mirrorActors": false,
+    "actorMargin": 30,
+    "messageMargin": 40,
+    "noteMargin": 15,
+    "width": 180
+  },
+  "themeVariables": {
+    "actorBkg": "#E3F2FD",
+    "actorBorder": "#1565C0",
+    "actorTextColor": "#0D47A1",
+    "signalColor": "#455A64",
+    "signalTextColor": "#212121",
+    "noteBkgColor": "#FFF9C4",
+    "noteBorderColor": "#F9A825",
+    "noteTextColor": "#212121",
+    "activationBkgColor": "#BBDEFB",
+    "activationBorderColor": "#1565C0",
+    "fontSize": "13px"
+  }
+}}%%
+
+sequenceDiagram
+    participant App as 用户应用<br/>(Windows)
+    participant TUN as WinTUN<br/>虚拟网卡
+    participant Daemon as docker-reach<br/>守护进程
+    participant Tunnel as TCP 隧道<br/>localhost:9999
+    participant GW as 网关容器<br/>Gateway
+    participant Bridge as Docker<br/>桥接网络
+    participant C as 目标容器
+
+    Note over App,C: 出站：Windows → 容器
+
+    App->>TUN: 发送 IP 包到 172.17.0.3
+    Note right of App: Windows 路由表：<br/>172.17.0.0/16 → 10.0.85.1<br/>经由 DockerReach 网卡
+
+    TUN->>Daemon: 原始 IP 包<br/>(内核 → 用户态)
+    Daemon->>Tunnel: [2字节长度][IP包]
+    Tunnel->>GW: TCP 数据流<br/>(Docker 端口映射)
+    Note right of GW: 写入 tun0 设备<br/>内核 IP 转发<br/>源地址 NAT 伪装
+    GW->>Bridge: 转发数据包<br/>(经由 eth0/eth1/ethN)
+    Bridge->>C: 送达目标容器
+
+    Note over App,C: 回程：容器 → Windows
+
+    C->>Bridge: 响应数据包
+    Bridge->>GW: 到达网关 eth0
+    Note right of GW: conntrack 反向 NAT<br/>路由经 tun0 返回
+    GW->>Tunnel: [2字节长度][IP包]
+    Tunnel->>Daemon: TCP 数据流
+    Daemon->>TUN: 原始 IP 包<br/>(用户态 → 内核)
+    TUN->>App: 送达用户应用
