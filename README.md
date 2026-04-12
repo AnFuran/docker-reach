@@ -19,11 +19,9 @@ Every existing workaround (`--net host`, WSL2 mirrored networking, `desktop-dock
 
 ## The Solution
 
-docker-reach creates a lightweight IP tunnel between Windows and a gateway container that has real L2 connectivity to all Docker bridge networks.
+docker-reach creates a lightweight IP tunnel between Windows and a gateway container that has real L2 connectivity to all Docker bridge networks. Your normal internet traffic is completely unaffected -- only packets destined for Docker subnets go through the tunnel.
 
-![Architecture](docs/architecture.png)
-
-Your normal internet traffic is completely unaffected -- only packets destined for Docker subnets go through the tunnel.
+For architecture diagrams and technical details, see [Architecture](docs/ARCHITECTURE.md).
 
 ---
 
