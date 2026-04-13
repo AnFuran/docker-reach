@@ -20,11 +20,41 @@ const (
 
 // HostsManager manages container DNS entries in the Windows hosts file.
 type HostsManager struct {
-	mu sync.Mutex
+	mu       sync.Mutex
+	backedUp bool // true after first backup has been created
 }
 
 func NewHostsManager() *HostsManager {
 	return &HostsManager{}
+}
+
+// backupOnce creates a one-time backup of the hosts file before any
+// modification. The backup is written next to the exe so the user can
+// find it easily if something goes wrong.
+func (h *HostsManager) backupOnce() {
+	if h.backedUp {
+		return
+	}
+	h.backedUp = true
+
+	data, err := os.ReadFile(hostsPath)
+	if err != nil {
+		slog.Warn("could not read hosts file for backup", "error", err)
+		return
+	}
+
+	// Validate: refuse to back up an empty or suspiciously small file.
+	if len(data) < 10 {
+		slog.Warn("hosts file is suspiciously small, skipping backup", "size", len(data))
+		return
+	}
+
+	backupPath := hostsPath + ".docker-reach-backup"
+	if err := os.WriteFile(backupPath, data, 0644); err != nil {
+		slog.Warn("could not create hosts backup", "error", err)
+		return
+	}
+	slog.Info("hosts file backed up", "path", backupPath)
 }
 
 // sanitizeName returns a hostname-safe version of a container name.
@@ -70,14 +100,39 @@ func atomicWriteFile(dst string, data []byte, perm os.FileMode) error {
 	}
 	if err := os.Rename(tmpName, dst); err != nil {
 		// On Windows, rename can fail when the target is locked by svchost
-		// (DNS Client service). Fall back to direct write — the file is small
-		// enough that a partial write is extremely unlikely.
-		slog.Debug("atomic rename failed, falling back to direct write", "error", err)
+		// (DNS Client service). Fall back to in-place overwrite using
+		// write-then-truncate, which is safe against mid-write process kill.
+		// (os.WriteFile uses O_TRUNC which empties the file BEFORE writing —
+		// if killed between truncate and write, the file is left empty.)
+		slog.Debug("atomic rename failed, falling back to safe overwrite", "error", err)
 		os.Remove(tmpName)
 		ok = true // prevent deferred remove of tmp (already removed)
-		return os.WriteFile(dst, data, perm)
+		return safeOverwrite(dst, data, perm)
 	}
 	ok = true
+	return nil
+}
+
+// safeOverwrite writes data to dst using write-then-truncate instead of
+// truncate-then-write (os.WriteFile). If the process is killed mid-write,
+// the file retains a mix of new + old content rather than being completely
+// empty. This is critical for the Windows hosts file.
+func safeOverwrite(dst string, data []byte, perm os.FileMode) error {
+	f, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE, perm)
+	if err != nil {
+		return fmt.Errorf("open for overwrite: %w", err)
+	}
+	defer f.Close()
+
+	if _, err := f.WriteAt(data, 0); err != nil {
+		return fmt.Errorf("write: %w", err)
+	}
+	// Truncate AFTER writing — removes stale trailing bytes from the old
+	// content. If killed before this line, the file has extra trailing
+	// data from the previous version, which is harmless.
+	if err := f.Truncate(int64(len(data))); err != nil {
+		return fmt.Errorf("truncate: %w", err)
+	}
 	return nil
 }
 
@@ -86,6 +141,8 @@ func atomicWriteFile(dst string, data []byte, perm os.FileMode) error {
 func (h *HostsManager) Update(records map[string]net.IP) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+
+	h.backupOnce()
 
 	data, err := os.ReadFile(hostsPath)
 	if err != nil {
@@ -116,6 +173,12 @@ func (h *HostsManager) Update(records map[string]net.IP) error {
 		content = strings.TrimRight(content, "\r\n") + "\n" + sb.String()
 	}
 
+	// Safety check: never write an empty or near-empty hosts file. If content
+	// is suspiciously small, something went wrong — abort to protect user data.
+	if len(content) < 10 {
+		return fmt.Errorf("refusing to write hosts file: content too small (%d bytes), possible data loss", len(content))
+	}
+
 	if err := atomicWriteFile(hostsPath, []byte(content), 0644); err != nil {
 		return fmt.Errorf("write hosts: %w", err)
 	}
@@ -129,12 +192,20 @@ func (h *HostsManager) Cleanup() error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
+	h.backupOnce()
+
 	data, err := os.ReadFile(hostsPath)
 	if err != nil {
 		return err
 	}
 
 	cleaned := removeSection(string(data))
+
+	// Safety check: never write an empty or near-empty hosts file.
+	if len(cleaned) < 10 {
+		return fmt.Errorf("refusing to write hosts file during cleanup: content too small (%d bytes)", len(cleaned))
+	}
+
 	return atomicWriteFile(hostsPath, []byte(cleaned), 0644)
 }
 

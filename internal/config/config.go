@@ -24,6 +24,10 @@ type Config struct {
 	LogFile             string `yaml:"log_file"`
 	WSLProtectSubnet    string `yaml:"wsl_protect_subnet"`
 	DockerDefaultBridge string `yaml:"docker_default_bridge"`
+
+	// detectedWSL is set at runtime by calling SetWSLSubnet after detecting
+	// the actual WSL2 network interface. Not persisted to YAML.
+	detectedWSL *net.IPNet `yaml:"-"`
 }
 
 // Default returns a Config populated with all default values.
@@ -155,8 +159,16 @@ func (c *Config) TunSubnetCIDR() string {
 }
 
 // OverlapsWSL reports whether cidr would conflict with the WSL2 address space.
-// It exempts DockerDefaultBridge (172.17.0.0/16 by default), which is known safe.
+// If a live WSL subnet has been detected (via SetWSLSubnet), only that specific
+// subnet is protected. Otherwise falls back to the broad WSLProtectSubnet from
+// config, exempting DockerDefaultBridge.
 func (c *Config) OverlapsWSL(cidr *net.IPNet) bool {
+	// Prefer the runtime-detected WSL subnet (exact match).
+	if c.detectedWSL != nil {
+		return c.detectedWSL.Contains(cidr.IP) && cidr.Contains(c.detectedWSL.IP)
+	}
+
+	// Fallback: broad protection with Docker default bridge exemption.
 	_, wslBlock, err := net.ParseCIDR(c.WSLProtectSubnet)
 	if err != nil {
 		return false
@@ -165,12 +177,16 @@ func (c *Config) OverlapsWSL(cidr *net.IPNet) bool {
 	if err != nil {
 		return false
 	}
-
-	// Docker's default bridge is safe to route.
 	if dockerDefault.Contains(cidr.IP) {
 		return false
 	}
 	return wslBlock.Contains(cidr.IP)
+}
+
+// SetWSLSubnet stores the runtime-detected WSL2 subnet so OverlapsWSL can
+// check against the real subnet rather than the broad /12 fallback.
+func (c *Config) SetWSLSubnet(cidr *net.IPNet) {
+	c.detectedWSL = cidr
 }
 
 // DashboardPortStr returns the dashboard listen address string (e.g. ":9998").

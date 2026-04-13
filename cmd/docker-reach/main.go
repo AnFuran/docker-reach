@@ -196,6 +196,7 @@ func cmdUp() {
 	defer cl.cleanupAll()
 
 	killExisting()
+	detectWSLSubnet()
 	slog.Info("starting docker-reach", "cwd", mustCwd())
 
 	// ---- Phase 1: gateway + tunnel (no host network changes) ----
@@ -381,6 +382,9 @@ func cmdUp() {
 // ---------------------------------------------------------------------------
 
 func cmdDown() {
+	// Kill any running docker-reach up process first.
+	killOtherInstances()
+
 	watcher, err := dockerutil.NewWatcher(cfg.GatewayName, cfg.TunnelPort, cfg.DashboardPort)
 	if err != nil {
 		fatal("docker", err)
@@ -391,6 +395,12 @@ func cmdDown() {
 		slog.Warn("remove gateway", "error", err)
 	} else {
 		slog.Info("gateway container removed")
+	}
+
+	// Clean up stale WinTUN adapter left behind by killed process.
+	if stale, err := wintun.OpenAdapter(cfg.AdapterName); err == nil {
+		stale.Close()
+		slog.Info("removed stale WinTUN adapter")
 	}
 
 	hosts := dns.NewHostsManager()
@@ -514,40 +524,76 @@ func routeDel(dest, mask string) {
 	exec.Command("route", "delete", dest, "mask", mask).Run()
 }
 
-// killExisting terminates any other running docker-reach process and removes a
-// leftover gateway container.
-//
-// H-5 fix: the previous pattern (-match 'docker-reach|^dr$') was too broad and
-// could kill unrelated processes whose names begin with "dr". We now match on
-// the full executable path so only genuine docker-reach binaries are targeted.
+// killOtherInstances terminates any other running docker-reach process.
+// Used by both cmdUp (before starting) and cmdDown (to stop a running up).
+// Uses taskkill with PID filter — more reliable than PowerShell path matching
+// which can fail when processes run elevated.
+func killOtherInstances() {
+	myPID := fmt.Sprintf("%d", os.Getpid())
+
+	// taskkill /F /IM docker-reach.exe /FI "PID ne <self>"
+	exec.Command("taskkill", "/F", "/IM", "docker-reach.exe", "/FI", "PID ne "+myPID).Run()
+}
+
+// killExisting terminates any other running docker-reach process, removes a
+// leftover gateway container, and waits until the container is fully gone
+// and ports are released before returning.
 func killExisting() {
-	exe, err := os.Executable()
-	if err != nil {
-		// Fallback: use a tighter name match that avoids the short "dr" alias.
-		exe = ""
-	}
-	myPID := os.Getpid()
+	killOtherInstances()
 
-	var ps string
-	if exe != "" {
-		// Normalise to forward slashes so the PowerShell string comparison is
-		// consistent regardless of how the path was resolved.
-		exePath := strings.ReplaceAll(filepath.ToSlash(exe), "'", "''") // escape single quotes
-		ps = fmt.Sprintf(
-			`Get-Process | Where-Object { ($_.Path -eq '%s') -and ($_.Id -ne %d) } | Stop-Process -Force -ErrorAction SilentlyContinue`,
-			exePath, myPID,
-		)
-	} else {
-		// Safe fallback: match exact process name "docker-reach" only.
-		ps = fmt.Sprintf(
-			`Get-Process -Name 'docker-reach' -ErrorAction SilentlyContinue | Where-Object { $_.Id -ne %d } | Stop-Process -Force -ErrorAction SilentlyContinue`,
-			myPID,
-		)
-	}
-
-	exec.Command("powershell", "-Command", ps).Run()
 	exec.Command("docker", "rm", "-f", cfg.GatewayName).Run()
+
+	// Wait until the gateway container is fully removed and the tunnel port
+	// is released. Docker Desktop can be slow to clean up — if we proceed
+	// immediately, EnsureGateway may fail with a port-already-bound error.
+	for i := 0; i < 20; i++ {
+		out, _ := exec.Command("docker", "inspect", cfg.GatewayName).CombinedOutput()
+		if strings.Contains(string(out), "No such") || strings.Contains(string(out), "Error") {
+			break
+		}
+		slog.Debug("waiting for old gateway container to be fully removed", "attempt", i+1)
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	// Also wait until the tunnel port is actually free.
+	addr := fmt.Sprintf("127.0.0.1:%d", cfg.TunnelPort)
+	for i := 0; i < 10; i++ {
+		ln, err := net.Listen("tcp", addr)
+		if err == nil {
+			ln.Close()
+			break
+		}
+		slog.Debug("waiting for tunnel port to be released", "port", cfg.TunnelPort, "attempt", i+1)
+		time.Sleep(500 * time.Millisecond)
+	}
+
 	slog.Info("cleaned up existing instances")
+}
+
+// detectWSLSubnet queries the Windows network interfaces for the actual WSL2
+// subnet and stores it in cfg so OverlapsWSL uses exact matching instead of
+// the broad 172.16.0.0/12 fallback.
+func detectWSLSubnet() {
+	// PowerShell one-liner: get the first IPv4 address on vEthernet (WSL*),
+	// output "IP/PrefixLength" (e.g. "172.31.48.1/20").
+	ps := `$a = Get-NetIPAddress -InterfaceAlias 'vEthernet (WSL*)' -AddressFamily IPv4 -ErrorAction SilentlyContinue | Select-Object -First 1; if ($a) { "$($a.IPAddress)/$($a.PrefixLength)" }`
+	out, err := exec.Command("powershell", "-Command", ps).Output()
+	if err != nil {
+		slog.Debug("could not detect WSL subnet", "error", err)
+		return
+	}
+	cidrStr := strings.TrimSpace(string(out))
+	if cidrStr == "" {
+		slog.Debug("no WSL network interface found")
+		return
+	}
+	_, cidr, err := net.ParseCIDR(cidrStr)
+	if err != nil {
+		slog.Warn("could not parse WSL subnet", "raw", cidrStr, "error", err)
+		return
+	}
+	cfg.SetWSLSubnet(cidr)
+	slog.Info("detected WSL subnet", "cidr", cidr)
 }
 
 func mustCwd() string {
